@@ -1,0 +1,52 @@
+CHIP CPU {
+    IN  inM[16],         // M value input (M = contents of RAM[A])[cite: 1, 5]
+        instruction[16], // Instruction for execution
+        reset;           // Reset signal
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M?
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // Address of next instruction[cite: 1, 14]
+
+    PARTS:
+    // Decode Instruction
+    Not(in=instruction[15], out=isA);
+    Not(in=isA, out=isC);
+    
+    // A Register logic
+    And(a=isC, b=instruction[5], out=isALUtoA);
+    Or(a=isA, b=isALUtoA, out=loadA);
+    Mux16(a=instruction, b=aluOut, sel=isALUtoA, out=inA);
+    ARegister(in=inA, load=loadA, out=aOut, out[0..14]=addressM);
+
+    // ALU input selection (A vs M)
+    Mux16(a=aOut, b=inM, sel=instruction[12], out=aluY);
+
+    // D Register logic
+    And(a=isC, b=instruction[4], out=loadD);
+    DRegister(in=aluOut, load=loadD, out=dOut);
+
+    // ALU Computation
+    ALU(x=dOut, y=aluY, zx=instruction[11], nx=instruction[10], 
+        zy=instruction[9], ny=instruction[8], f=instruction[7], 
+        no=instruction[6], out=aluOut, out=outM, zr=zrOut, ng=ngOut);
+
+    // Memory write flag
+    And(a=isC, b=instruction[3], out=writeM);
+
+    // Jump Logic
+    Not(in=zrOut, out=notZr);
+    Not(in=ngOut, out=notNg);
+    And(a=notZr, b=notNg, out=pos);
+
+    And(a=instruction[2], b=ngOut, out=jlt);
+    And(a=instruction[1], b=zrOut, out=jeq);
+    And(a=instruction[0], b=pos,   out=jgt);
+
+    Or(a=jlt, b=jeq, out=jle);
+    Or(a=jle, b=jgt, out=jumpCond);
+    And(a=isC, b=jumpCond, out=doJump);
+
+    // Program Counter
+    PC(in=aOut, load=doJump, inc=true, reset=reset, out[0..14]=pc);
+}
